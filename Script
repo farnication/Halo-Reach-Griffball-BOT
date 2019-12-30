@@ -1,0 +1,239 @@
+from PIL import ImageGrab
+import numpy as np
+import cv2
+from time import sleep, process_time
+import math
+import autoit
+import ctypes
+from ctypes import wintypes
+import time
+from win32gui import GetWindowText, GetForegroundWindow
+import PySimpleGUI as sg
+
+
+sg.Popup('Instructions', '1. Click onto Halo Reach while in matchmaking for Grifball ONLY', '2. Script will begin running in 10 seconds', '3. To stop the bot just click off Halo Reach window','4. When ready click OK....','5. Have fun Boosting!',title='Bot Ready To Start!!')
+
+
+
+user32 = ctypes.WinDLL('user32', use_last_error=True)
+
+INPUT_MOUSE    = 0
+INPUT_KEYBOARD = 1
+INPUT_HARDWARE = 2
+
+KEYEVENTF_EXTENDEDKEY = 0x0001
+KEYEVENTF_KEYUP       = 0x0002
+KEYEVENTF_UNICODE     = 0x0004
+KEYEVENTF_SCANCODE    = 0x0008
+
+MAPVK_VK_TO_VSC = 0
+
+# List of all codes for keys:
+# # msdn.microsoft.com/en-us/library/dd375731
+
+W = 0x57
+A = 0x41
+S = 0x53
+D = 0x44
+Q = 0x51
+
+
+UP = 0x26
+DOWN = 0x28
+A = 0x41
+
+# C struct definitions
+
+wintypes.ULONG_PTR = wintypes.WPARAM
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = (("dx",          wintypes.LONG),
+                ("dy",          wintypes.LONG),
+                ("mouseData",   wintypes.DWORD),
+                ("dwFlags",     wintypes.DWORD),
+                ("time",        wintypes.DWORD),
+                ("dwExtraInfo", wintypes.ULONG_PTR))
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = (("wVk",         wintypes.WORD),
+                ("wScan",       wintypes.WORD),
+                ("dwFlags",     wintypes.DWORD),
+                ("time",        wintypes.DWORD),
+                ("dwExtraInfo", wintypes.ULONG_PTR))
+
+    def __init__(self, *args, **kwds):
+        super(KEYBDINPUT, self).__init__(*args, **kwds)
+        # some programs use the scan code even if KEYEVENTF_SCANCODE
+        # isn't set in dwFflags, so attempt to map the correct code.
+        if not self.dwFlags & KEYEVENTF_UNICODE:
+            self.wScan = user32.MapVirtualKeyExW(self.wVk,
+                                                 MAPVK_VK_TO_VSC, 0)
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = (("uMsg",    wintypes.DWORD),
+                ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD))
+
+class INPUT(ctypes.Structure):
+    class _INPUT(ctypes.Union):
+        _fields_ = (("ki", KEYBDINPUT),
+                    ("mi", MOUSEINPUT),
+                    ("hi", HARDWAREINPUT))
+    _anonymous_ = ("_input",)
+    _fields_ = (("type",   wintypes.DWORD),
+                ("_input", _INPUT))
+
+LPINPUT = ctypes.POINTER(INPUT)
+
+def _check_count(result, func, args):
+    if result == 0:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return args
+
+user32.SendInput.errcheck = _check_count
+user32.SendInput.argtypes = (wintypes.UINT, # nInputs
+                             LPINPUT,       # pInputs
+                             ctypes.c_int)  # cbSize
+# Functions
+
+def PressKey(hexKeyCode):
+    x = INPUT(type=INPUT_KEYBOARD,
+              ki=KEYBDINPUT(wVk=hexKeyCode))
+    user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+
+def ReleaseKey(hexKeyCode):
+    x = INPUT(type=INPUT_KEYBOARD,
+              ki=KEYBDINPUT(wVk=hexKeyCode,
+                            dwFlags=KEYEVENTF_KEYUP))
+    user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+
+def waitsec(sec):
+	for i in range(0,sec):
+		print(i)
+		sleep(1)
+
+def calcdistance(x,y,x2=252,y2=318):
+	distance = math.sqrt((x-x2)**2 + (y-y2)**2)
+	return round(distance,2)
+
+def findstart(frame, color_mask1):
+	yellowmask = cv2.bitwise_and(frame, frame, mask = color_mask1)
+	grey = cv2.cvtColor(yellowmask, cv2.COLOR_RGB2GRAY)
+	_,contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+	for c in contours:
+		obj = cv2.boundingRect(c)
+		x,y,w,h = obj
+		cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+		print(x+w/2,y+h/2)
+
+def getframe():
+	img = ImageGrab.grab(bbox=(0,600,500,1080)) #bbox specifies specific region (bbox= x,y,width,height)
+	img = np.array(img)
+	frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+	color_mask1 = cv2.inRange(frame, np.array([0,190,210]), np.array([50,255,255])) #yellow
+	color_mask2 = cv2.inRange(frame, np.array([0,0,235]), np.array([75,40,255])) #red
+	#color_mask3 = cv2.inRange(frame, np.array([230,160,50]), np.array([255,190,100])) #blue
+	color_mask3 = cv2.inRange(frame, np.array([0,0,0]), np.array([2,2,2])) #black
+	mask = cv2.bitwise_or(color_mask1 ,color_mask3)#yellow and blue
+	mask = cv2.bitwise_or(mask ,color_mask2)
+
+	redmask = cv2.bitwise_and(frame, frame, mask = color_mask2)
+	grey = cv2.cvtColor(redmask, cv2.COLOR_RGB2GRAY)
+	output = cv2.bitwise_and(frame, frame, mask = mask)
+
+	return frame, grey, output, color_mask1
+
+
+
+waitsec(10)
+
+for i in range(0,5):
+	frame, _, _, mask = getframe()
+	findstart(frame,mask)
+
+center = (252,318)
+startpos = []
+ran = 1
+xlevel = -10
+area = 0
+
+while GetWindowText(GetForegroundWindow()) == "Halo: The Master Chief Collection  ":
+	start = process_time()
+	
+	#Grab Screen Image
+	#Parse Images in seperate Color masks
+	frame, grey, output, _ = getframe()
+	
+	#kinda useless but it finds the center of yellow dot the first few frames
+
+	
+	
+	#finds objects and gets locations
+	_,contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+	w,h = 0,0
+	shortx,shorty,shortw,shorth = 0,0,0,0
+	index = 0
+	shortest_distance = 500
+	for c in contours:
+		index = index + 1
+		obj = cv2.boundingRect(c)
+		#area = cv2.contourArea(c)
+		#print(area)
+		x,y,w,h = obj
+
+		distance = calcdistance(x,y)
+		if distance < shortest_distance:
+			shortest_distance = distance
+			shortx,shorty,shortw,shorth = obj
+		else:
+			cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
+		cv2.putText(frame, str(index) + '. Distance: ' + str(distance),(x,y), cv2.FONT_HERSHEY_COMPLEX_SMALL,.5,(255, 255, 255))
+	cv2.rectangle(frame,(shortx,shorty),(shortx+shortw,shorty+shorth),(0,255,255),2)
+	cv2.line(frame,(200,318+xlevel),(400,318+xlevel),(255,255,0))
+	cv2.line(frame,(252,200),(252,400),(255,0,0))
+
+
+
+	#Finds Closest Red Object
+	if shortest_distance < 40:
+		#print("Hit: " + str(shortest_distance))
+		autoit.mouse_click('left')
+		
+	#Movement Code
+	if any(frame[100][100]) == 0:
+		print('Waiting For Game')
+		sleep(4)
+	else:
+		#print(frame[100][100])
+		if len(contours) < 1:
+			#print(len(contours))
+			PressKey(W)
+			ReleaseKey(A)
+			ReleaseKey(D)
+			ReleaseKey(S)
+		else:
+			if shortx+w/2 > center[0]:
+				ReleaseKey(A)
+				PressKey(D)
+			elif shortx+w/2 < center[0]:
+				ReleaseKey(D)
+				PressKey(A)
+
+			if shorty+h/2 > center[1] + xlevel:
+				ReleaseKey(W)
+				PressKey(S)
+			elif shorty+h/2 < center[1] + xlevel:
+				ReleaseKey(S)
+				PressKey(W)
+
+
+	cv2.imshow("test", np.hstack([frame,output]))
+	if cv2.waitKey(1) & 0xFF == ord('q'):
+		break
+
+	end = process_time()
+	print(start-end)
+cv2.destroyAllWindows()
+print('Done')
