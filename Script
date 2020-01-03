@@ -3,17 +3,19 @@ import numpy as np
 import cv2
 from time import sleep, process_time
 import math
-import autoit
 import ctypes
 from ctypes import wintypes
 import time
 from win32gui import GetWindowText, GetForegroundWindow
 import PySimpleGUI as sg
+import configparser
+from os import path
+from win32api import GetSystemMetrics
 
 
-sg.Popup('Instructions', '1. Click onto Halo Reach while in matchmaking for Grifball ONLY', '2. Script will begin running in 10 seconds', '3. To stop the bot just click off Halo Reach window','4. When ready click OK....','5. Have fun Boosting!',title='Bot Ready To Start!!')
 
 
+sg.Popup('https://www.youtube.com/channel/UCh-TN1GlQfbwDQ03je9jZpg','Created by: Alex Sturgeon','Instructions', '1. First time it runs it needs to be configured, follow youtube link above to do that.',' 2. Click onto Halo Reach while in matchmaking for Grifball ONLY', '3. Script will begin running in 10 seconds', '4. To stop the bot just click off Halo Reach window','5. When ready click OK....','6. Have fun Boosting!',title='Bot Ready To Start!!')
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 
@@ -28,9 +30,6 @@ KEYEVENTF_SCANCODE    = 0x0008
 
 MAPVK_VK_TO_VSC = 0
 
-# List of all codes for keys:
-# # msdn.microsoft.com/en-us/library/dd375731
-
 W = 0x57
 A = 0x41
 S = 0x53
@@ -41,8 +40,6 @@ Q = 0x51
 UP = 0x26
 DOWN = 0x28
 A = 0x41
-
-# C struct definitions
 
 wintypes.ULONG_PTR = wintypes.WPARAM
 
@@ -63,8 +60,6 @@ class KEYBDINPUT(ctypes.Structure):
 
     def __init__(self, *args, **kwds):
         super(KEYBDINPUT, self).__init__(*args, **kwds)
-        # some programs use the scan code even if KEYEVENTF_SCANCODE
-        # isn't set in dwFflags, so attempt to map the correct code.
         if not self.dwFlags & KEYEVENTF_UNICODE:
             self.wScan = user32.MapVirtualKeyExW(self.wVk,
                                                  MAPVK_VK_TO_VSC, 0)
@@ -108,8 +103,8 @@ def ReleaseKey(hexKeyCode):
     user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
 def waitsec(sec):
-	for i in range(0,sec):
-		print(i)
+	for i in range(sec,0,-1):
+		print('Starting in: ' + str(i))
 		sleep(1)
 
 def calcdistance(x,y,x2=252,y2=318):
@@ -119,22 +114,25 @@ def calcdistance(x,y,x2=252,y2=318):
 def findstart(frame, color_mask1):
 	yellowmask = cv2.bitwise_and(frame, frame, mask = color_mask1)
 	grey = cv2.cvtColor(yellowmask, cv2.COLOR_RGB2GRAY)
-	_,contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+	contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
 
 	for c in contours:
 		obj = cv2.boundingRect(c)
 		x,y,w,h = obj
 		cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
 		print(x+w/2,y+h/2)
+		return (x+w/2,y+h/2)
+		
 
 def getframe():
+	#img = ImageGrab.grab(bbox=(0,h/2,w*.25,h)) #bbox specifies specific region (bbox= x,y,width,height)
 	img = ImageGrab.grab(bbox=(0,600,500,1080)) #bbox specifies specific region (bbox= x,y,width,height)
-	img = np.array(img)
-	frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+	img2 = np.array(img, dtype='uint8')
+
+	frame = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
 
 	color_mask1 = cv2.inRange(frame, np.array([0,190,210]), np.array([50,255,255])) #yellow
 	color_mask2 = cv2.inRange(frame, np.array([0,0,235]), np.array([75,40,255])) #red
-	#color_mask3 = cv2.inRange(frame, np.array([230,160,50]), np.array([255,190,100])) #blue
 	color_mask3 = cv2.inRange(frame, np.array([0,0,0]), np.array([2,2,2])) #black
 	mask = cv2.bitwise_or(color_mask1 ,color_mask3)#yellow and blue
 	mask = cv2.bitwise_or(mask ,color_mask2)
@@ -145,33 +143,65 @@ def getframe():
 
 	return frame, grey, output, color_mask1
 
+config = configparser.ConfigParser()
+config.read('config.ini')
+print('If its the first time running, make sure you are in a game alone and moving constantly')
+
+try:
+	Starting_time = int(config['def']['Starting_time'])
+	waitsec(Starting_time)
+except:
+	waitsec(10)
 
 
-waitsec(10)
 
-for i in range(0,5):
-	frame, _, _, mask = getframe()
-	findstart(frame,mask)
 
-center = (252,318)
+if path.exists('config.ini'):
+	print('Config File Loaded')
+	config.read('config.ini')
+
+	setup = config['def']['setup']
+	attack_distance = int(config['def']['attack_distance'])
+	Starting_time = int(config['def']['Starting_time'])
+
+	if setup == 'False':
+		print('Modifying Config File')
+		center = str(findstart(getframe()[0],getframe()[3]))
+		config['def'] = {'setup': 'True', 'center': center, 'attack_distance': str(attack_distance), 'Starting_time' : str(Starting_time)}
+		with open('config.ini', 'w') as configfile:
+			config.write(configfile)
+
+	config.read('config.ini')
+	setup = config['def']['setup']
+	center = eval(config['def']['center'])
+	attack_distance = int(config['def']['attack_distance'])
+	Starting_time = int(config['def']['Starting_time'])
+
+	print('MiniMap Center: ' + str(center))
+	print('Attack Distance: ' + str(attack_distance))
+	
+else:
+	print('Creating Config File')
+	center = str(findstart(getframe()[0],getframe()[3]))
+	config['def'] = {'setup': 'True', 'center': center, 'attack_distance': '40', 'Starting_time' : '5'}
+	with open('config.ini', 'w') as configfile:
+		config.write(configfile)
+
+
+
 startpos = []
 ran = 1
 xlevel = -10
 area = 0
+w = GetSystemMetrics(0)
+h = GetSystemMetrics(1)
 
+print(w,h)
 while GetWindowText(GetForegroundWindow()) == "Halo: The Master Chief Collection  ":
-	start = process_time()
-	
-	#Grab Screen Image
-	#Parse Images in seperate Color masks
 	frame, grey, output, _ = getframe()
-	
-	#kinda useless but it finds the center of yellow dot the first few frames
 
-	
-	
-	#finds objects and gets locations
-	_,contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+	contours,_ = cv2.findContours(grey,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
 	w,h = 0,0
 	shortx,shorty,shortw,shorth = 0,0,0,0
 	index = 0
@@ -179,8 +209,6 @@ while GetWindowText(GetForegroundWindow()) == "Halo: The Master Chief Collection
 	for c in contours:
 		index = index + 1
 		obj = cv2.boundingRect(c)
-		#area = cv2.contourArea(c)
-		#print(area)
 		x,y,w,h = obj
 
 		distance = calcdistance(x,y)
@@ -195,20 +223,21 @@ while GetWindowText(GetForegroundWindow()) == "Halo: The Master Chief Collection
 	cv2.line(frame,(252,200),(252,400),(255,0,0))
 
 
-
-	#Finds Closest Red Object
-	if shortest_distance < 40:
-		#print("Hit: " + str(shortest_distance))
-		autoit.mouse_click('left')
+	try:
+		if shortest_distance < attack_distance:
+			ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+			time.sleep(.1)
+			ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+	except:
+		print('First-Time Startup: Complete')
+		print('[!] Restart Script [!]')
+		sleep(3)
 		
-	#Movement Code
-	if any(frame[100][100]) == 0:
+	if any(frame[100][100]) == 0 and any(frame[200,200] == 0):
 		print('Waiting For Game')
 		sleep(4)
 	else:
-		#print(frame[100][100])
 		if len(contours) < 1:
-			#print(len(contours))
 			PressKey(W)
 			ReleaseKey(A)
 			ReleaseKey(D)
@@ -228,12 +257,9 @@ while GetWindowText(GetForegroundWindow()) == "Halo: The Master Chief Collection
 				ReleaseKey(S)
 				PressKey(W)
 
-
-	cv2.imshow("test", np.hstack([frame,output]))
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
 
-	end = process_time()
-	print(start-end)
 cv2.destroyAllWindows()
-print('Done')
+print('[!] Done, Closing Window')
+
